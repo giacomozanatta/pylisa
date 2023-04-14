@@ -5,8 +5,8 @@ import it.unive.lisa.type.NumericType;
 import it.unive.lisa.type.StringType;
 import it.unive.lisa.type.Type;
 import it.unive.lisa.type.TypeSystem;
-import it.unive.lisa.type.common.BoolType;
-import it.unive.lisa.type.common.Int32Type;
+import it.unive.lisa.program.type.BoolType;
+import it.unive.lisa.program.type.Int32Type;
 
 public class PythonTypeSystem extends TypeSystem {
 
@@ -17,7 +17,7 @@ public class PythonTypeSystem extends TypeSystem {
 
 	@Override
 	public StringType getStringType() {
-		return it.unive.lisa.type.common.StringType.INSTANCE;
+		return it.unive.lisa.program.type.StringType.INSTANCE;
 	}
 
 	@Override

@@ -174,9 +174,10 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 			throws SemanticException {
 		DataframeGraphDomain sss = smallStepSemantics(expression, pp);
 		TypeSystem types = pp.getProgram().getTypes();
-		if (!sss.constants.getValueOnStack().isBottom())
+		ConstantPropagation cp = sss.constants.eval(expression, pp);
+		if (!cp.isBottom())
 			return new DataframeGraphDomain(
-					sss.constants.putState(id, sss.constants.getValueOnStack()),
+					sss.constants.putState(id, cp),
 					sss.graph,
 					sss.pointers,
 					sss.operations);
@@ -223,13 +224,14 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@Override
-	public DataframeGraphDomain assume(ValueExpression expression, ProgramPoint pp) throws SemanticException {
+	public DataframeGraphDomain assume(ValueExpression expression, ProgramPoint pp, ProgramPoint dest) throws SemanticException {
 		return new DataframeGraphDomain(
-				constants.assume(expression, pp),
+				constants.assume(expression, pp, dest),
 				graph,
 				pointers,
 				operations);
 	}
+
 
 	@Override
 	public DataframeGraphDomain forgetIdentifier(Identifier id) throws SemanticException {
@@ -459,9 +461,9 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 
 		UnaryOperator operator = expression.getOperator();
 		if (operator == ReadDataframe.INSTANCE)
-			return doReadDataframe(arg, pp);
+			return doReadDataframe(expression, arg, pp);
 		if (operator == CreateDataframe.INSTANCE)
-			return doCreateDataframe(arg, pp);
+			return doCreateDataframe(expression, arg, pp);
 		else if (operator == CopyDataframe.INSTANCE)
 			return doCopyDataframe(arg, pp);
 		else if (operator instanceof ApplyTransformation)
@@ -471,12 +473,12 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 		else if (operator instanceof PopSelection)
 			return doPopSelection(arg, pp);
 		else if (operator instanceof AxisConcatenation)
-			return doAxisConcatenation(arg, operator, pp);
+			return doAxisConcatenation(expression, arg, pp);
 		else if (operator == AccessKeys.INSTANCE)
 			return doAccessKeys(arg, pp);
 		else if (operator == Iterate.INSTANCE)
 			return doIterate(arg, pp);
-		else if (!arg.constants.getValueOnStack().isBottom()
+		else if (!arg.constants.eval(expression, pp).isBottom()
 				&& arg.constants.lattice.canProcess(expression))
 			return delegateToConstants(expression, arg, pp);
 		else
@@ -537,10 +539,10 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static DataframeGraphDomain doAxisConcatenation(DataframeGraphDomain arg, UnaryOperator operator,
+	private static DataframeGraphDomain doAxisConcatenation(UnaryExpression expression, DataframeGraphDomain arg,
 			ProgramPoint pp)
 			throws SemanticException {
-		ConstantPropagation list = arg.constants.getValueOnStack();
+		ConstantPropagation list = arg.constants.eval(expression, pp);
 		if (topOrBottom(list) || !list.is(List.class))
 			return cleanStack(arg, pp);
 
@@ -561,7 +563,7 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 
 		DataframeForest forest = new DataframeForest(arg.graph);
 		DataframeOperation concatNode = new Concat(pp.getLocation(),
-				operator == JoinCols.INSTANCE ? Concat.Axis.CONCAT_COLS : Concat.Axis.CONCAT_ROWS);
+				expression.getOperator() == JoinCols.INSTANCE ? Concat.Axis.CONCAT_COLS : Concat.Axis.CONCAT_ROWS);
 		forest.addNode(concatNode);
 
 		Map<NodeId, SetLattice<DataframeOperation>> operations = new HashMap<>(arg.operations.getMap());
@@ -758,9 +760,9 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 				new CollectingMapLattice<>(arg.operations.lattice, operations));
 	}
 
-	private static DataframeGraphDomain doReadDataframe(DataframeGraphDomain arg, ProgramPoint pp)
+	private static DataframeGraphDomain doReadDataframe(UnaryExpression expression, DataframeGraphDomain arg, ProgramPoint pp)
 			throws SemanticException {
-		ConstantPropagation filename = arg.constants.getValueOnStack();
+		ConstantPropagation filename = arg.constants.eval(expression, pp);
 		if (topOrBottom(filename))
 			return cleanStack(arg, pp);
 
@@ -780,9 +782,9 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static DataframeGraphDomain doCreateDataframe(DataframeGraphDomain arg, ProgramPoint pp)
+	private static DataframeGraphDomain doCreateDataframe(UnaryExpression expression, DataframeGraphDomain arg, ProgramPoint pp)
 			throws SemanticException {
-		ConstantPropagation dict = arg.constants.getValueOnStack();
+		ConstantPropagation dict = arg.constants.eval(expression, pp);
 		if (topOrBottom(dict))
 			return cleanStack(arg, pp);
 
@@ -821,33 +823,33 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 		BinaryOperator operator = expression.getOperator();
 
 		if (operator == ListAppend.INSTANCE)
-			return doListAppend(left, right, pp);
+			return doListAppend(expression, left, right, pp);
 		else if (operator == ColumnAccess.INSTANCE)
-			return doColumnAccess(left, right, pp);
+			return doColumnAccess(expression, left, right, pp);
 		else if (operator instanceof FillNull)
-			return doFillNull(left, right, operator, pp);
+			return doFillNull(expression, left, right, pp);
 		else if (operator == DropCols.INSTANCE)
-			return doDropColumns(left, right, pp);
+			return doDropColumns(expression, left, right, pp);
 		else if (operator == JoinCols.INSTANCE)
 			return doJoinColumns(left, right, pp);
 		else if (operator instanceof WriteSelectionDataframe)
 			return doWriteSelectionDataframe(left, right, pp);
 		else if (operator instanceof WriteSelectionConstant)
-			return doWriteSelectionConstant(left, right, pp);
+			return doWriteSelectionConstant(expression, left, right, pp);
 		else if (operator instanceof PandasSeriesComparison)
-			return doPandasSeriesComparison(left, right, pp, operator);
-		else if (!left.constants.getValueOnStack().isBottom()
-				&& !right.constants.getValueOnStack().isBottom()
+			return doPandasSeriesComparison(expression, left, right, pp);
+		else if (!left.constants.eval(expression, pp).isBottom()
+				&& !right.constants.eval(expression, pp).isBottom()
 				&& right.constants.lattice.canProcess(expression))
 			return delegateToConstants(expression, right, pp);
 		else
 			return cleanStack(right, pp);
 	}
 
-	private static DataframeGraphDomain doPandasSeriesComparison(DataframeGraphDomain left, DataframeGraphDomain right,
-			ProgramPoint pp, BinaryOperator operator) throws SemanticException {
+	private static DataframeGraphDomain doPandasSeriesComparison(BinaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain right,
+			ProgramPoint pp) throws SemanticException {
 		SetLattice<DataframeOperation> df1 = resolvePointers(left);
-		ConstantPropagation value = right.constants.getValueOnStack();
+		ConstantPropagation value = right.constants.eval(expression, pp);
 		if (topOrBottom(df1))
 			return cleanStack(right, pp);
 		if (value.isBottom()) // unknown variables can lead to top
@@ -855,7 +857,7 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 
 		DataframeForest forest = new DataframeForest(right.graph);
 		Map<NodeId, SetLattice<DataframeOperation>> operations = new HashMap<>(right.operations.getMap());
-		PandasSeriesComparison seriesCompOp = (PandasSeriesComparison) operator;
+		PandasSeriesComparison seriesCompOp = (PandasSeriesComparison) expression.getOperator();
 		Map<NodeId, DataframeOperation> ids = new HashMap<>();
 
 		for (DataframeOperation op : df1) {
@@ -891,10 +893,10 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 				ops);
 	}
 
-	private static DataframeGraphDomain doWriteSelectionConstant(DataframeGraphDomain left, DataframeGraphDomain right,
+	private static DataframeGraphDomain doWriteSelectionConstant(BinaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain right,
 			ProgramPoint pp) throws SemanticException {
 		SetLattice<DataframeOperation> df = resolvePointers(left);
-		ConstantPropagation c = right.constants.getValueOnStack();
+		ConstantPropagation c = right.constants.eval(expression, pp);
 		if (topOrBottom(df) || topOrBottom(c))
 			return cleanStack(right, pp);
 
@@ -1024,11 +1026,11 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static DataframeGraphDomain doDropColumns(DataframeGraphDomain left, DataframeGraphDomain right,
+	private static DataframeGraphDomain doDropColumns(BinaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain right,
 			ProgramPoint pp)
 			throws SemanticException {
 		SetLattice<DataframeOperation> ops = resolvePointers(left);
-		ConstantPropagation cols = right.constants.getValueOnStack();
+		ConstantPropagation cols = right.constants.eval(expression, pp);
 		if (topOrBottom(ops) || topOrBottom(cols) || !cols.is(List.class))
 			return cleanStack(right, pp);
 
@@ -1061,15 +1063,15 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 				right.operations.putState(id, new SetLattice<>(drop)));
 	}
 
-	private static DataframeGraphDomain doFillNull(DataframeGraphDomain left,
-			DataframeGraphDomain right, BinaryOperator operator, ProgramPoint pp)
+	private static DataframeGraphDomain doFillNull(BinaryExpression expression, DataframeGraphDomain left,
+			DataframeGraphDomain right, ProgramPoint pp)
 			throws SemanticException {
 		SetLattice<DataframeOperation> ops = resolvePointers(left);
-		ConstantPropagation value = right.constants.getValueOnStack();
+		ConstantPropagation value = right.constants.eval(expression, pp);
 		if (topOrBottom(ops))
 			return cleanStack(right, pp);
 
-		FillNullAxis filler = new FillNullAxis(pp.getLocation(), ((FillNull) operator).getAxis(), value);
+		FillNullAxis filler = new FillNullAxis(pp.getLocation(), ((FillNull) expression.getOperator()).getAxis(), value);
 
 		DataframeForest forest = new DataframeForest(right.graph);
 		forest.addNode(filler);
@@ -1087,12 +1089,12 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
-	private static DataframeGraphDomain doColumnAccess(DataframeGraphDomain left, DataframeGraphDomain right,
+	private static DataframeGraphDomain doColumnAccess(BinaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain right,
 			ProgramPoint pp)
 			throws SemanticException {
 		SetLattice<DataframeOperation> ops = resolvePointers(left);
 		SetLattice<DataframeOperation> args = resolvePointers(right);
-		ConstantPropagation col = right.constants.getValueOnStack();
+		ConstantPropagation col = right.constants.eval(expression, pp);
 		if (topOrBottom(ops))
 			return cleanStack(right, pp);
 
@@ -1153,16 +1155,17 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static DataframeGraphDomain doListAppend(DataframeGraphDomain left, DataframeGraphDomain right,
+	private static DataframeGraphDomain doListAppend(BinaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain right,
 			ProgramPoint pp)
 			throws SemanticException {
-		ConstantPropagation list = left.constants.getValueOnStack();
+		ConstantPropagation list = left.constants.eval(expression, pp);
 		if (topOrBottom(list) || topOrBottom(right) || !list.is(List.class))
 			return right;
 
 		Lattice<?> tail;
-		if (!right.constants.getValueOnStack().isBottom())
-			tail = right.constants.getValueOnStack();
+		ConstantPropagation cpRight = right.constants.eval(expression, pp);
+		if (!cpRight.isBottom())
+			tail = cpRight;
 		else if (!right.pointers.lattice.isBottom())
 			tail = right.pointers.lattice;
 		else
@@ -1189,33 +1192,36 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 		TernaryOperator operator = expression.getOperator();
 
 		if (operator == DictPut.INSTANCE)
-			return doDictPut(left, middle, right, pp);
+			return doDictPut(expression, left, middle, right, pp);
 		else if (operator == ProjectRows.INSTANCE || operator == AccessRows.INSTANCE)
-			return doAccessOrProjectRows(left, middle, right, pp, operator);
+			return doAccessOrProjectRows(expression, left, middle, right, pp);
 		else if (operator instanceof AccessRowsColumns)
-			return doAccessRowsColumns(left, middle, right, pp);
+			return doAccessRowsColumns(expression, left, middle, right, pp);
 		else if (operator instanceof SliceCreation)
-			return doSliceCreation(left, middle, right, pp);
-		else if (!left.constants.getValueOnStack().isBottom()
-				&& !middle.constants.getValueOnStack().isBottom()
-				&& !right.constants.getValueOnStack().isBottom()
+			return doSliceCreation(expression, left, middle, right, pp);
+		else if (!left.constants.eval(expression, pp).isBottom()
+				&& !middle.constants.eval(expression, pp).isBottom()
+				&& !right.constants.eval(expression, pp).isBottom()
 				&& right.constants.lattice.canProcess(expression))
 			return delegateToConstants(expression, right, pp);
 		else
 			return cleanStack(right, pp);
 	}
 
-	private static DataframeGraphDomain doSliceCreation(DataframeGraphDomain left, DataframeGraphDomain middle,
+	private static DataframeGraphDomain doSliceCreation(TernaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain middle,
 			DataframeGraphDomain right, ProgramPoint pp) throws SemanticException {
-		if (right.constants.getValueOnStack().isBottom())
+		ConstantPropagation cpRight = right.constants.eval(expression, pp);
+		if (cpRight.isBottom())
 			return cleanStack(right, pp);
-		RangeBound skip = getRangeBound(right.constants.getValueOnStack());
+		RangeBound skip = getRangeBound(cpRight);
 
-		if (!left.constants.getValueOnStack().isBottom()
-				&& !middle.constants.getValueOnStack().isBottom()) {
+		ConstantPropagation cpLeft = left.constants.eval(expression, pp);
+		ConstantPropagation cpMiddle = left.constants.eval(expression, pp);
+		if (!cpLeft.isBottom()
+				&& !cpMiddle.isBottom()) {
 			// numeric slice
-			RangeBound start = getRangeBound(left.constants.getValueOnStack());
-			RangeBound end = getRangeBound(middle.constants.getValueOnStack());
+			RangeBound start = getRangeBound(cpLeft);
+			RangeBound end = getRangeBound(cpMiddle);
 			SliceConstant slice = new SliceConstant(start, end, skip, pp.getLocation());
 			return new DataframeGraphDomain(
 					right.constants.smallStepSemantics(slice, pp),
@@ -1242,13 +1248,13 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
-	private static DataframeGraphDomain doAccessRowsColumns(DataframeGraphDomain left, DataframeGraphDomain middle,
+	private static DataframeGraphDomain doAccessRowsColumns(TernaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain middle,
 			DataframeGraphDomain right, ProgramPoint pp) throws SemanticException {
 		// left[middle, right]
 		// df[row_slice | column_comparison, columns]
 		SetLattice<DataframeOperation> df = resolvePointers(left);
 		// right is a list of strings so we will handle that first
-		ConstantPropagation cols = right.constants.getValueOnStack();
+		ConstantPropagation cols = right.constants.eval(expression, pp);
 		if (topOrBottom(df) || topOrBottom(middle) || topOrBottom(cols))
 			return cleanStack(right, pp);
 
@@ -1280,9 +1286,10 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 			return cleanStack(right, pp);
 
 		// middle can be either a slice or a series comparison
-		if (!topOrBottom(middle.constants.getValueOnStack())) {
+		ConstantPropagation cpMiddle = middle.constants.eval(expression, pp);
+		if (!topOrBottom(cpMiddle)) {
 			// middle is a slice
-			SliceConstant.Slice rowSlice = middle.constants.getValueOnStack().as(SliceConstant.Slice.class);
+			SliceConstant.Slice rowSlice = cpMiddle.as(SliceConstant.Slice.class);
 			NumberSlice numberSlice = new NumberSlice(
 					rowSlice.getStart() == null ? new Interval().bottom() : rowSlice.getStart().toInterval(),
 					rowSlice.getEnd() == null ? new Interval().bottom() : rowSlice.getEnd().toInterval(),
@@ -1362,17 +1369,17 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 		}
 	}
 
-	private static DataframeGraphDomain doAccessOrProjectRows(DataframeGraphDomain left, DataframeGraphDomain middle,
-			DataframeGraphDomain right, ProgramPoint pp, TernaryOperator operator) throws SemanticException {
+	private static DataframeGraphDomain doAccessOrProjectRows(TernaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain middle,
+			DataframeGraphDomain right, ProgramPoint pp) throws SemanticException {
 		SetLattice<DataframeOperation> df = resolvePointers(left);
-		ConstantPropagation start = middle.constants.getValueOnStack();
-		ConstantPropagation end = right.constants.getValueOnStack();
+		ConstantPropagation start = middle.constants.eval(expression, pp);
+		ConstantPropagation end = right.constants.eval(expression, pp);
 		if (topOrBottom(start) || topOrBottom(end) || topOrBottom(df))
 			return cleanStack(right, pp);
 
 		NumberSlice slice = new NumberSlice(start.as(Integer.class), end.as(Integer.class));
 		DataframeOperation node;
-		if (operator == ProjectRows.INSTANCE)
+		if (expression.getOperator() == ProjectRows.INSTANCE)
 			node = new ProjectionOperation<>(pp.getLocation(), slice);
 		else
 			node = new AccessOperation<>(pp.getLocation(), slice);
@@ -1392,21 +1399,24 @@ public class DataframeGraphDomain implements ValueDomain<DataframeGraphDomain> {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static DataframeGraphDomain doDictPut(DataframeGraphDomain left, DataframeGraphDomain middle,
+	private static DataframeGraphDomain doDictPut(TernaryExpression expression, DataframeGraphDomain left, DataframeGraphDomain middle,
 			DataframeGraphDomain right, ProgramPoint pp) throws SemanticException {
-		ConstantPropagation dict = left.constants.getValueOnStack();
+		ConstantPropagation dict = left.constants.eval(expression, pp);
 		if (topOrBottom(dict) || topOrBottom(middle) || topOrBottom(right) || !dict.is(Map.class))
 			return cleanStack(right, pp);
 
 		Lattice<?> key, value;
-		if (!middle.constants.getValueOnStack().isBottom())
-			key = middle.constants.getValueOnStack();
+		ConstantPropagation cpMiddle = middle.constants.eval(expression, pp);
+		if (!cpMiddle.isBottom())
+			key = cpMiddle;
 		else if (!middle.pointers.lattice.isBottom())
 			key = middle.pointers.lattice;
 		else
 			key = middle.constants.lattice.top();
-		if (!right.constants.getValueOnStack().isBottom())
-			value = right.constants.getValueOnStack();
+
+		ConstantPropagation cpRight = middle.constants.eval(expression, pp);
+		if (!cpRight.isBottom())
+			value = cpRight;
 		else if (!right.pointers.lattice.isBottom())
 			value = right.pointers.lattice;
 		else

@@ -119,6 +119,7 @@ public class PyTernaryOperator extends Expression {
 		for (SymbolicExpression cond : postCondition.getComputedExpressions()) {
 			UnaryExpression negated = new UnaryExpression(cond.getStaticType(), cond, LogicalNegation.INSTANCE,
 					cond.getCodeLocation());
+			// TODO: fix assume
 			switch (postCondition.satisfies(cond, this)) {
 			case BOTTOM:
 				return entryState.bottom();

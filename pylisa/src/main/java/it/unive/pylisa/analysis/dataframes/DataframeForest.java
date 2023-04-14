@@ -18,7 +18,9 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.BiFunction;
 
+import it.unive.lisa.util.collections.workset.VisitOnceLIFOWorkingSet;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.graphstream.graph.Edge;
@@ -36,7 +38,7 @@ import it.unive.lisa.outputs.serializableGraph.SerializableGraph;
 import it.unive.lisa.outputs.serializableGraph.SerializableNode;
 import it.unive.lisa.outputs.serializableGraph.SerializableNodeDescription;
 import it.unive.lisa.outputs.serializableGraph.SerializableValue;
-import it.unive.lisa.util.collections.workset.LIFOWorkingSet;
+
 import it.unive.lisa.util.collections.workset.VisitOnceWorkingSet;
 import it.unive.lisa.util.datastructures.graph.code.CodeGraph;
 import it.unive.lisa.util.datastructures.graph.code.NodeList;
@@ -103,7 +105,7 @@ public class DataframeForest extends CodeGraph<DataframeForest, DataframeOperati
 	}
 
 	@Override
-	public SerializableGraph toSerializableGraph(Function<DataframeOperation, SerializableValue> descriptionGenerator) {
+	public SerializableGraph toSerializableGraph(BiFunction<DataframeForest, DataframeOperation, SerializableValue> descriptionGenerator) {
 		String name = "dataframes";
 
 		SortedSet<SerializableNode> nodes = new TreeSet<>();
@@ -112,7 +114,7 @@ public class DataframeForest extends CodeGraph<DataframeForest, DataframeOperati
 		SortedSet<SerializableEdge> edges = new TreeSet<>();
 
 		for (DataframeOperation node : getNodes()) {
-			nodeIds.put(node, addNode(nodes, descrs, node, descriptionGenerator));
+			nodeIds.put(node, addNode(nodes, descrs, node, this, descriptionGenerator));
 		}
 
 		for (DataframeOperation src : getNodes())
@@ -134,11 +136,12 @@ public class DataframeForest extends CodeGraph<DataframeForest, DataframeOperati
 			SortedSet<SerializableNode> nodes,
 			SortedSet<SerializableNodeDescription> descrs,
 			DataframeOperation node,
-			Function<DataframeOperation, SerializableValue> descriptionGenerator) {
+			DataframeForest dataframeForest,
+			BiFunction<DataframeForest, DataframeOperation, SerializableValue> descriptionGenerator) {
 		SerializableNode n = new SerializableNode(counter, Collections.emptyList(), node.toString());
 		nodes.add(n);
 		if (descriptionGenerator != null) {
-			SerializableValue value = descriptionGenerator.apply(node);
+			SerializableValue value = descriptionGenerator.apply(dataframeForest, node);
 			if (value != null)
 				descrs.add(new SerializableNodeDescription(counter, value));
 		}
@@ -486,7 +489,7 @@ public class DataframeForest extends CodeGraph<DataframeForest, DataframeOperati
 		NodeList<DataframeForest, DataframeOperation,
 				DataframeEdge> list = new NodeList<>(new SimpleEdge(null, null), false);
 		DataframeForest forest = new DataframeForest(Collections.singleton(entry), list, false);
-		VisitOnceWorkingSet<DataframeOperation> ws = VisitOnceWorkingSet.mk(LIFOWorkingSet.mk());
+		VisitOnceWorkingSet<DataframeOperation> ws = VisitOnceLIFOWorkingSet.mk();
 		Set<DataframeEdge> seenEdges = new TreeSet<>();
 		ws.push(entry);
 		list.addNode(entry);
@@ -513,7 +516,7 @@ public class DataframeForest extends CodeGraph<DataframeForest, DataframeOperati
 		NodeList<DataframeForest, DataframeOperation,
 				DataframeEdge> list = new NodeList<>(new SimpleEdge(null, null), false);
 		DataframeForest forest = new DataframeForest(Collections.emptySet(), list, false);
-		VisitOnceWorkingSet<DataframeOperation> ws = VisitOnceWorkingSet.mk(LIFOWorkingSet.mk());
+		VisitOnceWorkingSet<DataframeOperation> ws = VisitOnceLIFOWorkingSet.mk();
 		Set<DataframeEdge> seenEdges = new TreeSet<>();
 		ws.push(leaf);
 		list.addNode(leaf);

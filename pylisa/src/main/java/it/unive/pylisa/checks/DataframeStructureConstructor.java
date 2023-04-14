@@ -9,7 +9,7 @@ import java.util.Set;
 
 import it.unive.lisa.analysis.AnalysisState;
 import it.unive.lisa.analysis.BaseLattice;
-import it.unive.lisa.analysis.CFGWithAnalysisResults;
+import it.unive.lisa.analysis.AnalyzedCFG;
 import it.unive.lisa.analysis.SemanticException;
 import it.unive.lisa.analysis.SimpleAbstractState;
 import it.unive.lisa.analysis.heap.pointbased.PointBasedHeap;
@@ -115,13 +115,13 @@ public class DataframeStructureConstructor implements SemanticCheck<
 
 		if (node.stopsExecution()) {
 			Collection<
-					CFGWithAnalysisResults<
+					AnalyzedCFG<
 							SimpleAbstractState<PointBasedHeap, DataframeGraphDomain,
 									TypeEnvironment<InferredTypes>>,
 							PointBasedHeap, DataframeGraphDomain,
 							TypeEnvironment<InferredTypes>>> results = tool.getResultOf(graph);
 
-			for (CFGWithAnalysisResults<
+			for (AnalyzedCFG<
 					SimpleAbstractState<PointBasedHeap, DataframeGraphDomain, TypeEnvironment<InferredTypes>>,
 					PointBasedHeap, DataframeGraphDomain, TypeEnvironment<InferredTypes>> result : results) {
 
@@ -131,7 +131,12 @@ public class DataframeStructureConstructor implements SemanticCheck<
 						PointBasedHeap, DataframeGraphDomain,
 						TypeEnvironment<InferredTypes>> post = result.getAnalysisStateAfter(node);
 
-				DataframeGraphDomain dom = post.getDomainInstance(DataframeGraphDomain.class);
+				DataframeGraphDomain dom = null;
+				try {
+					dom = post.getDomainInstance(DataframeGraphDomain.class);
+				} catch (SemanticException e) {
+					throw new RuntimeException("Processing failed", e);
+				}
 				DataframeForest forest = dom.close();
 				Collection<DataframeOperation> exits = forest.getNodeList().getExits();
 				if (exits.size() != 1)
@@ -168,7 +173,7 @@ public class DataframeStructureConstructor implements SemanticCheck<
 
 	private ColumnsDomain process(DataframeForest graph, DataframeOperation exit)
 			throws FixpointException {
-		Fixpoint<DataframeForest, DataframeOperation, DataframeEdge, ColumnsDomain> fix = new Fixpoint<>(graph);
+		Fixpoint<DataframeForest, DataframeOperation, DataframeEdge, ColumnsDomain> fix = new Fixpoint<>(graph, true);
 		ColumnsDomain beginning = new ColumnsDomain(Columns.TOP).bottom();
 
 		Map<DataframeOperation, ColumnsDomain> entrypoints = new HashMap<>();
@@ -182,7 +187,12 @@ public class DataframeStructureConstructor implements SemanticCheck<
 					@Override
 					public ColumnsDomain union(DataframeOperation node, ColumnsDomain left, ColumnsDomain right)
 							throws Exception {
-						return join(node, left, right);
+						return left.lub(right);
+					}
+
+					@Override
+					public ColumnsDomain operation(DataframeOperation node, ColumnsDomain approx, ColumnsDomain old) throws Exception {
+						return null;
 					}
 
 					@Override
@@ -190,11 +200,6 @@ public class DataframeStructureConstructor implements SemanticCheck<
 						return entrystate;
 					}
 
-					@Override
-					public ColumnsDomain join(DataframeOperation node, ColumnsDomain approx, ColumnsDomain old)
-							throws Exception {
-						return approx.lub(old);
-					}
 
 					@Override
 					public boolean equality(DataframeOperation node, ColumnsDomain approx, ColumnsDomain old)
@@ -307,7 +312,7 @@ public class DataframeStructureConstructor implements SemanticCheck<
 		}
 	}
 
-	private static class Columns extends BaseLattice<Columns> {
+	private static class Columns implements BaseLattice<Columns> {
 
 		private static final Columns TOP = new Columns(Names.TOP, Names.TOP, Names.TOP, Names.TOP, Names.TOP);
 		private static final Columns BOTTOM = new Columns(Names.BOTTOM, Names.BOTTOM, Names.BOTTOM, Names.BOTTOM,

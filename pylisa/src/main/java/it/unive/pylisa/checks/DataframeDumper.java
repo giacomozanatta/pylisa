@@ -10,10 +10,12 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.BiFunction;
 
-import it.unive.lisa.LiSAConfiguration;
+import it.unive.lisa.analysis.SemanticException;
+import it.unive.lisa.conf.LiSAConfiguration;
 import it.unive.lisa.analysis.AnalysisState;
-import it.unive.lisa.analysis.CFGWithAnalysisResults;
+import it.unive.lisa.analysis.AnalyzedCFG;
 import it.unive.lisa.analysis.SimpleAbstractState;
 import it.unive.lisa.analysis.heap.pointbased.AllocationSite;
 import it.unive.lisa.analysis.heap.pointbased.AllocationSites;
@@ -101,13 +103,13 @@ public class DataframeDumper implements SemanticCheck<
 
 		if (node.stopsExecution()) {
 			Collection<
-					CFGWithAnalysisResults<
+					AnalyzedCFG<
 							SimpleAbstractState<PointBasedHeap, DataframeGraphDomain,
 									TypeEnvironment<InferredTypes>>,
 							PointBasedHeap, DataframeGraphDomain,
 							TypeEnvironment<InferredTypes>>> results = tool.getResultOf(graph);
 
-			for (CFGWithAnalysisResults<
+			for (AnalyzedCFG<
 					SimpleAbstractState<PointBasedHeap, DataframeGraphDomain, TypeEnvironment<InferredTypes>>,
 					PointBasedHeap, DataframeGraphDomain, TypeEnvironment<InferredTypes>> result : results) {
 
@@ -121,8 +123,15 @@ public class DataframeDumper implements SemanticCheck<
 				if (result.getId() != null)
 					filename += "_" + result.getId().hashCode();
 
-				PointBasedHeap heap = post.getDomainInstance(PointBasedHeap.class);
-				DataframeGraphDomain dom = post.getDomainInstance(DataframeGraphDomain.class);
+				PointBasedHeap heap = null;
+				DataframeGraphDomain dom = null;
+				try {
+					heap = post.getDomainInstance(PointBasedHeap.class);
+					dom = post.getDomainInstance(DataframeGraphDomain.class);
+				} catch (SemanticException e) {
+					throw new RuntimeException(e);
+				}
+
 				DataframeForest forest = dom.getGraph();
 				Collection<DataframeForest> subgraphs = forest.partitionByRoot();
 				CollectingMapLattice<Identifier, NodeId> pointers = dom.getPointers();
@@ -141,7 +150,7 @@ public class DataframeDumper implements SemanticCheck<
 
 				try {
 					fileManager.mkDotFile(filename + "@" + node.getOffset(),
-							writer -> forest.toSerializableGraph(op -> label(op, refs)).toDot().dump(writer));
+							writer -> forest.toSerializableGraph((f, op) -> label(f, op, refs)).toDot().dump(writer));
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
@@ -150,7 +159,7 @@ public class DataframeDumper implements SemanticCheck<
 				for (DataframeForest sub : subgraphs)
 					try {
 						fileManager.mkDotFile(i++ + "-" + filename + "@" + node.getOffset(),
-								writer -> sub.toSerializableGraph(op -> label(op, refs)).toDot().dump(writer));
+								writer -> sub.toSerializableGraph((f, op) -> label(f, op, refs)).toDot().dump(writer));
 					} catch (IOException e) {
 						throw new RuntimeException(e);
 					}
@@ -160,7 +169,7 @@ public class DataframeDumper implements SemanticCheck<
 		return true;
 	}
 
-	private SerializableValue label(DataframeOperation op, Map<DataframeOperation, Set<Identifier>> refs) {
+	private SerializableValue label(DataframeForest forest, DataframeOperation op, Map<DataframeOperation, Set<Identifier>> refs) {
 		String extra = refs.containsKey(op)
 				? "\nPointed by: " + refs.get(op).stream().map(id -> id.toString()).sorted()
 						.reduce("", (res, s) -> res + s + "\n").trim()

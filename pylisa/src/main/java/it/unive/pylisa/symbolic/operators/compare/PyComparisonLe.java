@@ -7,7 +7,7 @@ import it.unive.lisa.symbolic.value.operator.ComparisonOperator;
 import it.unive.lisa.symbolic.value.operator.binary.BinaryOperator;
 import it.unive.lisa.type.Type;
 import it.unive.lisa.type.TypeSystem;
-import it.unive.lisa.type.common.BoolType;
+import it.unive.lisa.program.type.BoolType;
 
 public class PyComparisonLe implements ComparisonOperator, BinaryOperator {
 

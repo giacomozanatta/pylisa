@@ -13,7 +13,7 @@ import it.unive.lisa.program.cfg.CodeLocation;
 import it.unive.lisa.program.cfg.statement.BinaryExpression;
 import it.unive.lisa.program.cfg.statement.Expression;
 import it.unive.lisa.symbolic.SymbolicExpression;
-import it.unive.lisa.type.common.BoolType;
+import it.unive.lisa.program.type.BoolType;
 import it.unive.pylisa.UnsupportedStatementException;
 
 public class PyIn extends BinaryExpression {

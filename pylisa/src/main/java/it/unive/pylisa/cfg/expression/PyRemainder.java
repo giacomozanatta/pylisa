@@ -16,7 +16,7 @@ import it.unive.lisa.symbolic.SymbolicExpression;
 import it.unive.lisa.symbolic.value.PushAny;
 import it.unive.lisa.type.Type;
 import it.unive.lisa.type.TypeSystem;
-import it.unive.lisa.type.common.StringType;
+import it.unive.lisa.program.type.StringType;
 import java.util.function.Predicate;
 
 public class PyRemainder extends Remainder {

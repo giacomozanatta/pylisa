@@ -23,12 +23,12 @@ public class PyFieldSensitivePointBasedHeap extends FieldSensitivePointBasedHeap
 	}
 
 	@Override
-	public PointBasedHeap popScope(ScopeToken scope) throws SemanticException {
+	public FieldSensitivePointBasedHeap popScope(ScopeToken scope) throws SemanticException {
 		return this;
 	}
 
 	@Override
-	public PointBasedHeap pushScope(ScopeToken scope) throws SemanticException {
+	public FieldSensitivePointBasedHeap pushScope(ScopeToken scope) throws SemanticException {
 		return this;
 	}
 }
